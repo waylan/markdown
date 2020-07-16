@@ -22,6 +22,7 @@ License: BSD (see LICENSE.md for details).
 import re
 import importlib
 import sys
+from collections import namedtuple
 
 
 # Import a copy of the html.parser lib as `htmlparser` so we can monkeypatch it.
@@ -45,6 +46,15 @@ htmlparser.incomplete = htmlparser.entityref
 blank_line_re = re.compile(r'^([ ]*\n){2}')
 
 
+Element = namedtuple('Element', ['tag', 'attrs'])
+
+
+class Stack(list):
+    """ A stack of elements. """
+    def __contains__(self, item):
+        return any(element.tag == item for element in self)
+
+
 class HTMLExtractor(htmlparser.HTMLParser):
     """
     Extract raw HTML from text.
@@ -64,7 +74,7 @@ class HTMLExtractor(htmlparser.HTMLParser):
         """Reset this instance.  Loses all unprocessed data."""
         self.inraw = False
         self.intail = False
-        self.stack = []  # When inraw==True, stack contains a list of tags
+        self.stack = Stack()  # When inraw==True, stack contains a list of elements
         self._cache = []
         self.cleandoc = []
         super().reset()
@@ -122,7 +132,7 @@ class HTMLExtractor(htmlparser.HTMLParser):
 
         text = self.get_starttag_text()
         if self.inraw:
-            self.stack.append(tag)
+            self.stack.append(Element(tag, attrs))
             self._cache.append(text)
         else:
             self.cleandoc.append(text)
@@ -135,22 +145,23 @@ class HTMLExtractor(htmlparser.HTMLParser):
             if tag in self.stack:
                 # Remove tag from stack
                 while self.stack:
-                    if self.stack.pop() == tag:
+                    element = self.stack.pop()
+                    if element.tag == tag:
                         break
-            if len(self.stack) == 0:
-                # End of raw block.
-                if blank_line_re.match(self.rawdata[self.line_offset + self.offset + len(text):]):
-                    # Preserve blank line and end of raw block.
-                    self._cache.append('\n')
-                else:
-                    # More content exists after endtag.
-                    self.intail = True
-                # Reset stack.
-                self.inraw = False
-                self.cleandoc.append(self.md.htmlStash.store(''.join(self._cache)))
-                # Insert blank line between this and next line.
-                self.cleandoc.append('\n\n')
-                self._cache = []
+                if len(self.stack) == 0:
+                    # End of raw block.
+                    if blank_line_re.match(self.rawdata[self.line_offset + self.offset + len(text):]):
+                        # Preserve blank line and end of raw block.
+                        self._cache.append('\n')
+                    else:
+                        # More content exists after endtag.
+                        self.intail = True
+                    # Reset stack.
+                    self.inraw = False
+                    self.cleandoc.append(self.md.htmlStash.store(''.join(self._cache), element))
+                    # Insert blank line between this and next line.
+                    self.cleandoc.append('\n\n')
+                    self._cache = []
         else:
             self.cleandoc.append(text)
 

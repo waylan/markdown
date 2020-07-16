@@ -207,9 +207,9 @@ class HtmlStash:
         self.html_counter = 0  # for counting inline html segments
         self.rawHtmlBlocks = []
         self.tag_counter = 0
-        self.tag_data = []  # list of dictionaries in the order tags appear
+        self.tag_data = []  # list of Element(tag, attrs) objects for each rawHTMLBLock
 
-    def store(self, html):
+    def store(self, html, element=None):
         """
         Saves an HTML segment for later reinsertion.  Returns a
         placeholder string that needs to be inserted into the
@@ -219,10 +219,13 @@ class HtmlStash:
 
         * html: an html segment
 
+        * element: a namedtuple with tag and attr attributes
+
         Returns : a placeholder string
 
         """
         self.rawHtmlBlocks.append(html)
+        self.tag_data.append(element)
         placeholder = self.get_placeholder(self.html_counter)
         self.html_counter += 1
         return placeholder
@@ -233,15 +236,6 @@ class HtmlStash:
 
     def get_placeholder(self, key):
         return HTML_PLACEHOLDER % key
-
-    def store_tag(self, tag, attrs, left_index, right_index):
-        """Store tag data and return a placeholder."""
-        self.tag_data.append({'tag': tag, 'attrs': attrs,
-                              'left_index': left_index,
-                              'right_index': right_index})
-        placeholder = TAG_PLACEHOLDER % str(self.tag_counter)
-        self.tag_counter += 1  # equal to the tag's index in self.tag_data
-        return placeholder
 
 
 # Used internally by `Registry` for each item in its sorted list.

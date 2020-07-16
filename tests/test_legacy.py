@@ -173,6 +173,7 @@ class TestExtensions(LegacyTestCase):
 class TestExtensionsExtra(LegacyTestCase):
     location = os.path.join(parent_test_dir, 'extensions/extra')
     default_kwargs = Kwargs(extensions=['extra'])
+    maxDiff = None
 
     loose_def_list = Kwargs(extensions=['def_list'])
 

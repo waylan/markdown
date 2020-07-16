@@ -1,15 +1,15 @@
 <div markdown="1">_foo_</div>
 
-<div markdown=1 class="baz">
+<div markdown="1" class="baz">
 _bar_
 </div>
 
-<div markdown>
+<div markdown="1">
 
 _blah_
 
 </div>
- 
+
 <div markdown="1" name="Example">
 
 The text of the `Example` element.
@@ -66,7 +66,7 @@ Markdown is *still* active here.
 
 Markdown is *active again* here.
 
-<div markdown=1>
+<div markdown="1">
 foo bar
 
 <em>bar</em>
@@ -94,7 +94,7 @@ abbr
 
 <div markdown="1" name="issue584">
 
-[^1]: 
+[^1]:
     1.  The top couple half figure, contrary sides and hands across with bottom couple,
 
         Half figure back on your own sides, and turn partner to places,
@@ -151,7 +151,7 @@ abbr
 
 <div markdown="1" name="issue584">
 
-[^2]: 
+[^2]:
     1.  The top couple half figure, contrary sides and hands across with bottom couple,
 
         Half figure back on your own sides, and turn partner to places,
