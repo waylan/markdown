@@ -1,10 +1,10 @@
 <div markdown="1">_foo_</div>
 
-<div markdown="1" class="baz">
+<div markdown=1 class="baz">
 _bar_
 </div>
 
-<div markdown="1">
+<div markdown>
 
 _blah_
 
@@ -66,7 +66,7 @@ Markdown is *still* active here.
 
 Markdown is *active again* here.
 
-<div markdown="1">
+<div markdown=1>
 foo bar
 
 <em>bar</em>
