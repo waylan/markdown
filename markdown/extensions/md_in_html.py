@@ -22,6 +22,22 @@ import xml.etree.ElementTree as etree
 from html.parser import HTMLParser
 
 
+# Block-level tags in which the content only gets span level parsing
+span_tags = ['address', 'dd', 'dt', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'legend', 'li', 'p', 'td', 'th']
+
+# Block-level tags in which the content gets parsed as blocks
+block_tags = [
+    'address', 'article', 'aside', 'blockquote', 'body', 'colgroup', 'details', 'div', 'dl', 'fieldset',
+    'figcaption', 'figure', 'footer', 'form', 'iframe', 'header', 'hr', 'main', 'menu', 'nav',  'map',
+    'noscript', 'object', 'ol', 'section', 'table', 'tbody', 'thead', 'tfoot', 'tr', 'ul'
+]
+
+# Block-level tags which never get their content parsed.
+raw_tags = ['canvas', 'math', 'option', 'pre', 'script', 'style', 'textarea']
+
+block_level_tags = span_tags + block_tags + raw_tags
+
+
 class HTMLTreeBuilder(HTMLParser):
     """ Parser a string of HTML into an ElementTree object. """
 
@@ -37,12 +53,13 @@ class HTMLTreeBuilder(HTMLParser):
         return self.treebuilder.close()
 
     def handle_starttag(self, tag, attrs):
-        attribs = dict()
-        for key, value in attrs:
-            # Valueless attr (`<tag checked>`) results in `('checked', None)`. Convert to `{'checked': 'checked'}`.
-            attribs[key] = value if value is not None else key
+        if 'p' in self.stack and tag in block_level_tags:
+            # Close unclosed 'p' tag
+            self.handle_endtag('p')
+        # Valueless attr (ex: `<tag checked>`) results in `[('checked', None)]`. Convert to `{'checked': 'checked'}`.
+        attrs = {key: value if value is not None else key for key, value in attrs}
         self.stack.append(tag)
-        self.treebuilder.start(tag, dict(attribs))
+        self.treebuilder.start(tag, attrs)
 
     def handle_endtag(self, tag):
         if tag in self.stack:
@@ -90,9 +107,6 @@ def parse_html(data):
 
 class MarkdownInHtmlProcessor(BlockProcessor):
     """Process Markdown Inside HTML Blocks."""
-    def __init__(self, parser, span_tags):
-        super().__init__(parser)
-        self.span_tags = span_tags
 
     def test(self, parent, block):
         m = util.HTML_PLACEHOLDER_RE.match(block)
@@ -103,31 +117,67 @@ class MarkdownInHtmlProcessor(BlockProcessor):
                 return True
         return False
 
-    def parse_element_content(self, element):
+    def parse_element_content(self, element, override=None):
         """
         Parse content as Markdown.
 
-        If the element has children, then any text content is not parsed as block level.
-        If 'markdown="1" and tag is not a `span_tag` or `markdown="block", then the text
+        If `markdown="1"` and tag is not a `block_tag` or `markdown="block", then the text
         content is parsed as block level markdown and appended as children on the element.
-        If markdown is anything except 1 or block, or 'markdown="1" and tag is a `span_tag`,
-        then no block level parsing will be done on the text content. If no markdown attribute
-        is set on the element or `markdown="0", then the text content is set to an
-        AtomicString, so that no inlne processing will happen either.
+        If 'markdown="1" and tag is a `span_tag` or `markdown="span"`, then only span level
+        parsing will be done on the text content. If no `markdown` attribute is set on the
+        element, the `markdown` attribute is set to anythign except "1", "block" or "span",
+        or the tag is not a known `block_tag` or 'span_tag, then the text content is converted
+        to an AtomicString, so that no processing will happen on it.
+
+        When `override` is set, the more restrictive value between `override` and the `markdown`
+        attribute of the element is used. `override` is set by the parent element as child
+        elements are parsed recursively.
         """
-        md_attr = element.attrib.pop('markdown') if 'markdown' in element.attrib else '0'
-        if md_attr not in ['0', 'span'] and len(element):
-            # handle children
+        md_attr = element.attrib.pop('markdown', '0')
+        if md_attr == 'markdown':
+            # `<tag markdown>` is the same as `<tag markdown='1'>`.
+            md_attr = '1'
+        if override == '0' or (override == 'span' and md_attr != '0'):
+            # Only use the override if it is more restrictive than the markdown attribute.
+            md_attr = override
+
+        if (md_attr == '1' and element.tag in block_tags) or (md_attr == 'block' and element.tag in span_tags + block_tags):
+            # Parse content as block level
+
+            # Recursively parse existing children from raw HTML
             for child in list(element):
                 self.parse_element_content(child)
-        elif md_attr == 'block' or (md_attr in ['1', 'markdown'] and element.tag not in self.span_tags):
-            # No children, parse text content
-            block = element.text
-            element.text = ''
-            self.parser.parseBlocks(element, block.split('\n'))
-        elif md_attr == '0':
-            # Disable inline parsing
+
+            # Parse Markdown text in tail of children. Do this seperate to avoid raw HTML parsing.
+            for child in list(element):
+                if child.tail:
+                    block = child.tail
+                    child.tail = ''
+                    self.parser.parseBlocks(element, block.split('\n'))
+
+            # Parse Markdown text content. Do this last to avoid raw HTML parsing.
+            if element.text:
+                block = element.text
+                element.text = ''
+                # Use a dummy placeholder element as the content needs to get inserted before existing children.
+                dummy = etree.Element('div')
+                self.parser.parseBlocks(dummy, block.split('\n'))
+                children = list(dummy)
+                children.reverse()
+                for child in children:
+                    element.insert(0, child)
+
+        elif (md_attr == '1' and element.tag in span_tags) or (md_attr == 'span' and element.tag in span_tags + block_tags):
+            # Parse content as span level only
+            for child in list(element):
+                self.parse_element_content(child, override='span')
+        else:
+            # Disable inline parsing for everything else
             element.text = util.AtomicString(element.text)
+            for child in list(element):
+                self.parse_element_content(child, override='0')
+                if child.tail:
+                    child.tail = util.AtomicString(child.tail)
 
     def run(self, parent, blocks):
         blocks.pop(0)
@@ -144,9 +194,8 @@ class MarkdownInHtmlExtension(Extension):
     def extendMarkdown(self, md):
         """ Register extension instances. """
 
-        span_tags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'dd', 'dt', 'td', 'th', 'legend', 'address']
         md.parser.blockprocessors.register(
-            MarkdownInHtmlProcessor(md.parser, span_tags), 'markdown_block', 105
+            MarkdownInHtmlProcessor(md.parser), 'markdown_block', 105
         )
 
 
