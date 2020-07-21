@@ -17,7 +17,6 @@ License: [BSD](https://opensource.org/licenses/bsd-license.php)
 from . import Extension
 from ..blockprocessors import BlockProcessor
 from .. import util
-import re
 import xml.etree.ElementTree as etree
 from html.parser import HTMLParser
 
@@ -80,7 +79,7 @@ class HTMLTreeBuilder(HTMLParser):
         self.treebuilder.pi(data)
 
     def handle_comment(self, data):
-        self.treebuilder.comment(text)
+        self.treebuilder.comment(data)
 
     def handle_entityref(self, name):
         self.treebuilder.data('&{};'.format(name))
@@ -88,7 +87,7 @@ class HTMLTreeBuilder(HTMLParser):
     def handle_charref(self, name):
         self.treebuilder.data('&#{};'.format(name))
 
-    def handle_decl(decl):
+    def handle_decl(self, decl):
         # TODO: Explore using a custom treebuilder which supports a `doctype` method.
         # See https://docs.python.org/3/library/xml.etree.elementtree.html#xml.etree.ElementTree.TreeBuilder.doctype
         self.treebuilder.data('<!{}>'.format(decl))
@@ -141,7 +140,8 @@ class MarkdownInHtmlProcessor(BlockProcessor):
             # Only use the override if it is more restrictive than the markdown attribute.
             md_attr = override
 
-        if (md_attr == '1' and element.tag in block_tags) or (md_attr == 'block' and element.tag in span_tags + block_tags):
+        if ((md_attr == '1' and element.tag in block_tags) or
+                (md_attr == 'block' and element.tag in span_tags + block_tags)):
             # Parse content as block level
             # The order in which the different parts are parsed (text, children, tails) is important here
             # as the order of elements needs to be preserved. We can't be inserting items at a later point
@@ -184,7 +184,8 @@ class MarkdownInHtmlProcessor(BlockProcessor):
                 for child in children:
                     element.insert(0, child)
 
-        elif (md_attr == '1' and element.tag in span_tags) or (md_attr == 'span' and element.tag in span_tags + block_tags):
+        elif ((md_attr == '1' and element.tag in span_tags) or
+              (md_attr == 'span' and element.tag in span_tags + block_tags)):
             # Parse content as span level only
             for child in list(element):
                 self.parse_element_content(child, override='span')
