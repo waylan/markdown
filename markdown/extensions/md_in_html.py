@@ -143,17 +143,34 @@ class MarkdownInHtmlProcessor(BlockProcessor):
 
         if (md_attr == '1' and element.tag in block_tags) or (md_attr == 'block' and element.tag in span_tags + block_tags):
             # Parse content as block level
+            # The order in which the different parts are parsed (text, children, tails) is important here
+            # as the order of elements needs to be preserved. We can't be inserting items at a later point
+            # in the current iteration as we don't want to do raw processing on elements created from
+            # parsing Markdown text (for example). Therefore, the order of operations is children, tails, text.
 
             # Recursively parse existing children from raw HTML
             for child in list(element):
                 self.parse_element_content(child)
 
             # Parse Markdown text in tail of children. Do this seperate to avoid raw HTML parsing.
-            for child in list(element):
+            # Save the position of each item to be inserted later in reverse.
+            tails = []
+            for pos, child in enumerate(element):
                 if child.tail:
                     block = child.tail
                     child.tail = ''
-                    self.parser.parseBlocks(element, block.split('\n'))
+                    # Use a dummy placeholder element.
+                    dummy = etree.Element('div')
+                    self.parser.parseBlocks(dummy, block.split('\n'))
+                    children = list(dummy)
+                    children.reverse()
+                    tails.append((pos + 1, children))
+
+            # Insert the elements created from the tails in reverse.
+            tails.reverse()
+            for pos, tail in tails:
+                for item in tail:
+                    element.insert(pos, item)
 
             # Parse Markdown text content. Do this last to avoid raw HTML parsing.
             if element.text:
