@@ -40,6 +40,12 @@ block_level_tags = span_tags + block_tags + raw_tags
 class HTMLTreeBuilder(HTMLParser):
     """ Parser a string of HTML into an ElementTree object. """
 
+    def __init__(self, htmlStash, *args, **kwargs):
+        if 'convert_charrefs' not in kwargs:
+            kwargs['convert_charrefs'] = False
+        super().__init__(*args, **kwargs)
+        self.htmlStash = htmlStash
+
     def reset(self):
         """Reset this instance.  Lose all unprocessed data."""
         self.stack = []
@@ -87,19 +93,23 @@ class HTMLTreeBuilder(HTMLParser):
     def handle_charref(self, name):
         self.treebuilder.data('&#{};'.format(name))
 
+    def stash(self, text):
+        placeholder = self.htmlStash.store(text)
+        self.handle_starttag('p', {})
+        self.handle_data(placeholder)
+        self.handle_endtag('p')
+
     def handle_decl(self, decl):
-        # TODO: Explore using a custom treebuilder which supports a `doctype` method.
-        # See https://docs.python.org/3/library/xml.etree.elementtree.html#xml.etree.ElementTree.TreeBuilder.doctype
-        self.treebuilder.data('<!{}>'.format(decl))
+        self.stash('<!{}>'.format(decl))
 
     def unknown_decl(self, data):
         end = ']]>' if data.startswith('CDATA[') else ']>'
-        self.treebuilder.data('<![{}{}'.format(data, end))
+        self.stash('<![{}{}'.format(data, end))
 
 
-def parse_html(data):
+def parse_html(data, htmlStash=None):
     """ Parser a string of HTML and return the toplevel element as an etree Element instance. """
-    parser = HTMLTreeBuilder(convert_charrefs=False)
+    parser = HTMLTreeBuilder(htmlStash, convert_charrefs=False)
     parser.feed(data)
     return parser.close()
 
@@ -201,7 +211,7 @@ class MarkdownInHtmlProcessor(BlockProcessor):
         blocks.pop(0)
         raw_html = self.parser.md.htmlStash.rawHtmlBlocks[self.index]
 
-        et_el = parse_html(raw_html)
+        et_el = parse_html(raw_html, self.parser.md.htmlStash)
         self.parse_element_content(et_el)
         parent.append(et_el)
 
