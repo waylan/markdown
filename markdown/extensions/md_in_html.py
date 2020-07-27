@@ -95,9 +95,7 @@ class HTMLTreeBuilder(HTMLParser):
 
     def stash(self, text):
         placeholder = self.htmlStash.store(text)
-        self.handle_starttag('p', {})
         self.handle_data(placeholder)
-        self.handle_endtag('p')
 
     def handle_decl(self, decl):
         self.stash('<!{}>'.format(decl))
