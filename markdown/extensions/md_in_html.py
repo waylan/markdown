@@ -18,7 +18,8 @@ from . import Extension
 from ..blockprocessors import BlockProcessor
 from .. import util
 import xml.etree.ElementTree as etree
-from html.parser import HTMLParser
+from html import parser
+import re
 
 
 # Block-level tags in which the content only gets span level parsing
@@ -37,7 +38,7 @@ raw_tags = ['canvas', 'math', 'option', 'pre', 'script', 'style', 'textarea']
 block_level_tags = span_tags + block_tags + raw_tags
 
 
-class HTMLTreeBuilder(HTMLParser):
+class HTMLTreeBuilder(parser.HTMLParser):
     """ Parser a string of HTML into an ElementTree object. """
 
     def __init__(self, htmlStash, *args, **kwargs):
@@ -57,26 +58,56 @@ class HTMLTreeBuilder(HTMLParser):
         super().close()
         return self.treebuilder.close()
 
+    @property
+    def line_offset(self):
+        """Returns char index in self.rawdata for the start of the current line. """
+        if self.lineno > 1:
+            return re.match(r'([^\n]*\n){{{}}}'.format(self.lineno-1), self.rawdata).end()
+        return 0
+
+    def get_endtag_text(self, tag):
+        """
+        Returns the text of the end tag.
+
+        If it fails to extract the actual text from the raw data, it builds a closing tag with `tag`.
+        """
+        # Attempt to extract actual tag from raw source text
+        start = self.line_offset + self.offset
+        m = parser.endendtag.search(self.rawdata, start)
+        if m:
+            return self.rawdata[start:m.end()]
+        else:
+            # Failed to extract from raw data. Assume well formed and lowercase.
+            return '</{}>'.format(tag)
+
     def handle_starttag(self, tag, attrs):
-        if 'p' in self.stack and tag in block_level_tags:
-            # Close unclosed 'p' tag
-            self.handle_endtag('p')
-        # Valueless attr (ex: `<tag checked>`) results in `[('checked', None)]`. Convert to `{'checked': 'checked'}`.
-        attrs = {key: value if value is not None else key for key, value in attrs}
-        self.stack.append(tag)
-        self.treebuilder.start(tag, attrs)
+        if tag in block_level_tags:
+            if 'p' in self.stack and tag in block_level_tags:
+                # Close unclosed 'p' tag
+                self.handle_endtag('p')
+            # Valueless attr (ex: `<tag checked>`) results in `[('checked', None)]`. Convert to `{'checked': 'checked'}`.
+            attrs = {key: value if value is not None else key for key, value in attrs}
+            self.stack.append(tag)
+            self.treebuilder.start(tag, attrs)
+        else:
+            text = self.get_starttag_text()
+            self.handle_data(text)
 
     def handle_endtag(self, tag):
-        if tag in self.stack:
-            while self.stack:
-                # Close any unclosed children first, then this element
-                item = self.stack.pop()
-                self.treebuilder.end(item)
-                if item == tag:
-                    break
+        if tag in block_level_tags:
+            if tag in self.stack:
+                while self.stack:
+                    # Close any unclosed children first, then this element
+                    item = self.stack.pop()
+                    self.treebuilder.end(item)
+                    if item == tag:
+                        break
+            else:
+                # Treat orphan closing tag as an empty tag.
+                self.handle_startendtag(tag, {})
         else:
-            # Treat orphan closing tag as an empty tag.
-            self.handle_startendtag(tag, {})
+            text = self.get_endtag_text(tag)
+            self.handle_data(text)
 
     def handle_data(self, data):
         self.treebuilder.data(data)
