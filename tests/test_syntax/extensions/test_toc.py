@@ -21,6 +21,7 @@ License: BSD (see LICENSE.md for details).
 
 from markdown.test_tools import TestCase
 from markdown.extensions.toc import TocExtension
+from markdown.extensions.nl2br import Nl2BrExtension
 
 
 class TestTOC(TestCase):
@@ -534,9 +535,9 @@ class TestTOC(TestCase):
         from markdown.extensions.toc import slugify_unicode
         self.assertMarkdownRenders(
             '# Unicode ヘッダー',
-            '<h1 id="unicode-ヘッター">'                                                            # noqa
+            '<h1 id="unicode-ヘッダー">'                                                            # noqa
                 'Unicode ヘッダー'                                                                  # noqa
-                '<a class="headerlink" href="#unicode-ヘッター" title="Permanent link">&para;</a>'  # noqa
+                '<a class="headerlink" href="#unicode-ヘッダー" title="Permanent link">&para;</a>'  # noqa
             '</h1>',                                                                               # noqa
             extensions=[TocExtension(permalink=True, slugify=slugify_unicode)]
         )
@@ -545,9 +546,26 @@ class TestTOC(TestCase):
         from markdown.extensions.toc import slugify_unicode
         self.assertMarkdownRenders(
             '# Unicode ヘッダー',
-            '<h1 id="unicode-ヘッター">'                                                        # noqa
+            '<h1 id="unicode-ヘッダー">'                                                        # noqa
                 'Unicode ヘッダー'                                                              # noqa
-                '<a class="headerlink" href="#unicode-ヘッター" title="パーマリンク">&para;</a>'  # noqa
+                '<a class="headerlink" href="#unicode-ヘッダー" title="パーマリンク">&para;</a>'  # noqa
             '</h1>',                                                                           # noqa
             extensions=[TocExtension(permalink=True, permalink_title="パーマリンク", slugify=slugify_unicode)]
+        )
+
+    def testPermalinkWithExtendedLatinInID(self):
+        self.assertMarkdownRenders(
+            '# Théâtre',
+            '<h1 id="theatre">'                                                            # noqa
+                'Théâtre'                                                                  # noqa
+                '<a class="headerlink" href="#theatre" title="Permanent link">&para;</a>'  # noqa
+            '</h1>',                                                                       # noqa
+            extensions=[TocExtension(permalink=True)]
+        )
+
+    def testNl2brCompatibility(self):
+        self.assertMarkdownRenders(
+            '[TOC]\ntext',
+            '<p>[TOC]<br />\ntext</p>',
+            extensions=[TocExtension(), Nl2BrExtension()]
         )
